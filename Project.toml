@@ -1,7 +1,4 @@
 [deps]
-AbstractPlotting = "537997a7-5e4e-5d89-9595-2241ea00577e"
 Agents = "46ada45e-f475-11e8-01d0-f70cc89e6671"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
-Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
-MakieLayout = "5a521ce4-ebb9-4793-b5b7-b334dfe8393c"
-Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"

@@ -1,6 +1,5 @@
 using Agents, Random
-using CairoMakie
-using Makie
+using GLMakie
 
 @agent Sheep GridAgent{2} begin
     energy::Float64
@@ -148,11 +147,9 @@ plotkwargs = (;
 
 sheepwolfgrass = initialize_model()
 
-
 fig, ax, abmobs = abmplot(sheepwolfgrass;
     agent_step! = sheepwolf_step!,
     model_step! = grass_step!,
 plotkwargs...)
 fig
-
 
