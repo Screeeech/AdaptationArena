@@ -5,12 +5,17 @@ using GLMakie
     energy::Float64
     reproduction_prob::Float64
     Δenergy::Float64
+    gene::Float64
+    mutation_rate::Float64
 end
 
 @agent Wolf GridAgent{2} begin
     energy::Float64
     reproduction_prob::Float64
     Δenergy::Float64
+    gene_center::Float64
+    gene_range::Float64
+    mutation_rate::Float64
 end
 
 function initialize_model(;
@@ -22,6 +27,11 @@ function initialize_model(;
         Δenergy_wolf = 20,
         sheep_reproduce = 0.04,
         wolf_reproduce = 0.05,
+        sheep_gene = 0.5,
+        wolf_gene_center = 0.5,
+        wolf_gene_range = 0.2,
+        sheep_mutation_rate = 0.01,
+        wolf_mutation_rate = 0.01,
         seed = 23182,
     )
 
@@ -34,6 +44,8 @@ function initialize_model(;
         fully_grown = falses(dims),
         countdown = zeros(Int, dims),
         regrowth_time = regrowth_time,
+        gene_center = zeros(Float64, dims),
+        gene_range = ones(Float64, dims),
     )
     model = ABM(Union{Sheep, Wolf}, space;
         properties, rng, scheduler = Schedulers.randomly, warn = false
@@ -41,11 +53,11 @@ function initialize_model(;
     # Add agents
     for _ in 1:n_sheep
         energy = rand(model.rng, 1:(Δenergy_sheep*2)) - 1
-        add_agent!(Sheep, model, energy, sheep_reproduce, Δenergy_sheep)
+        add_agent!(Sheep, model, energy, sheep_reproduce, Δenergy_sheep, sheep_gene, sheep_mutation_rate)
     end
     for _ in 1:n_wolves
         energy = rand(model.rng, 1:(Δenergy_wolf*2)) - 1
-        add_agent!(Wolf, model, energy, wolf_reproduce, Δenergy_wolf)
+        add_agent!(Wolf, model, energy, wolf_reproduce, Δenergy_wolf, wolf_gene_center, wolf_gene_range, wolf_mutation_rate)
     end
     # Add grass with random initial growth
     for p in positions(model)
@@ -56,8 +68,6 @@ function initialize_model(;
     end
     return model
 end
-
-sheepwolfgrass = initialize_model()
 
 function sheepwolf_step!(sheep::Sheep, model)
     randomwalk!(sheep, model)
@@ -128,6 +138,16 @@ function grass_step!(model)
     end
 end
 
+function plot_population_timeseries(adf, mdf)
+    figure = Figure(resolution = (600, 400))
+    ax = figure[1, 1] = Axis(figure; xlabel = "Step", ylabel = "Population")
+    sheepl = lines!(ax, adf.step, adf.count_sheep, color = :cornsilk4)
+    wolfl = lines!(ax, adf.step, adf.count_wolf, color = RGBAf(0.2, 0.2, 0.3))
+    grassl = lines!(ax, mdf.step, mdf.count_grass, color = :green)
+    figure[1, 2] = Legend(figure, [sheepl, wolfl, grassl], ["Sheep", "Wolves", "Grass"])
+    figure
+end
+
 offset(a) = a isa Sheep ? (-0.1, -0.1*rand()) : (+0.1, +0.1*rand())
 ashape(a) = a isa Sheep ? :circle : :utriangle
 acolor(a) = a isa Sheep ? RGBAf(1.0, 1.0, 1.0, 0.8) : RGBAf(0.2, 0.2, 0.3, 0.8)
@@ -145,7 +165,18 @@ plotkwargs = (;
     heatkwargs = heatkwargs,
 )
 
-sheepwolfgrass = initialize_model()
+stable_params = (;
+    n_sheep = 140,
+    n_wolves = 20,
+    dims = (30, 30),
+    Δenergy_sheep = 5,
+    sheep_reproduce = 0.31,
+    wolf_reproduce = 0.06,
+    Δenergy_wolf = 30,
+    seed = 71758,
+)
+
+sheepwolfgrass = initialize_model(;stable_params...)
 
 fig, ax, abmobs = abmplot(sheepwolfgrass;
     agent_step! = sheepwolf_step!,
@@ -153,3 +184,12 @@ fig, ax, abmobs = abmplot(sheepwolfgrass;
 plotkwargs...)
 fig
 
+#=
+sheep(a) = a isa Sheep
+wolf(a) = a isa Wolf
+count_grass(model) = count(model.fully_grown)
+adata = [(sheep, count), (wolf, count)]
+mdata = [count_grass]
+adf, mdf = run!(sheepwolfgrass, sheepwolf_step!, grass_step!, 2000; adata, mdata)
+plot_population_timeseries(adf, mdf)
+=#
