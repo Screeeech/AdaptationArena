@@ -1,4 +1,5 @@
 using Agents, Random
+using Distributions
 using GLMakie
 
 @agent Sheep GridAgent{2} begin
@@ -27,11 +28,10 @@ function initialize_model(;
         Δenergy_wolf = 20,
         sheep_reproduce = 0.04,
         wolf_reproduce = 0.05,
-        sheep_gene = 0.5,
-        wolf_gene_center = 0.5,
         wolf_gene_range = 0.2,
-        sheep_mutation_rate = 0.01,
-        wolf_mutation_rate = 0.01,
+        sheep_mutation_rate = 0.1,
+        wolf_mutation_rate = 0.1,
+        grass_gene_range = 0.2,
         seed = 23182,
     )
 
@@ -45,26 +45,37 @@ function initialize_model(;
         countdown = zeros(Int, dims),
         regrowth_time = regrowth_time,
         gene_center = zeros(Float64, dims),
-        gene_range = ones(Float64, dims),
+        gene_range = ones(Float64, dims) * grass_gene_range,
     )
     model = ABM(Union{Sheep, Wolf}, space;
         properties, rng, scheduler = Schedulers.randomly, warn = false
     )
+
     # Add agents
+    # Initial distribution for sheep
+    sheep_gene_distribution = truncated(Normal(0, 0.3), -1, 1)
     for _ in 1:n_sheep
         energy = rand(model.rng, 1:(Δenergy_sheep*2)) - 1
+        sheep_gene = rand(model.rng, sheep_gene_distribution)
         add_agent!(Sheep, model, energy, sheep_reproduce, Δenergy_sheep, sheep_gene, sheep_mutation_rate)
     end
+
+    # Initial distribution for wolves
+    wolf_gene_distribution = truncated(Normal(0, 0.3), -1, 1)
     for _ in 1:n_wolves
-        energy = rand(model.rng, 1:(Δenergy_wolf*2)) - 1
+        energy = rand(model.rng, 1:(Δenergy_wolf*2)) - 1 
+        wolf_gene_center = rand(model.rng, wolf_gene_distribution)
         add_agent!(Wolf, model, energy, wolf_reproduce, Δenergy_wolf, wolf_gene_center, wolf_gene_range, wolf_mutation_rate)
     end
-    # Add grass with random initial growth
+
+    # Initial distribution for grass
+    grass_gene_distribution = truncated(Normal(0, 0.3), -1, 1)
     for p in positions(model)
         fully_grown = rand(model.rng, Bool)
         countdown = fully_grown ? regrowth_time : rand(model.rng, 1:regrowth_time) - 1
         model.countdown[p...] = countdown
         model.fully_grown[p...] = fully_grown
+        model.gene_center[p...] = rand(model.rng, grass_gene_distribution)
     end
     return model
 end
@@ -117,10 +128,21 @@ function eat!(wolf::Wolf, sheep::Sheep, model)
     return
 end
 
-function reproduce!(agent::A, model) where {A}
+function reproduce!(agent::Sheep, model)
     agent.energy /= 2
     id = nextid(model)
-    offspring = A(id, agent.pos, agent.energy, agent.reproduction_prob, agent.Δenergy)
+    
+    offspring = Sheep(id, agent.pos, agent.energy, agent.reproduction_prob, agent.Δenergy, 
+                        agent.gene, agent.mutation_rate)
+    add_agent_pos!(offspring, model)
+    return
+end
+
+function reproduce!(agent::Wolf, model)
+    agent.energy /= 2
+    id = nextid(model)
+    offspring = Wolf(id, agent.pos, agent.energy, agent.reproduction_prob, agent.Δenergy, 
+                        agent.gene_center, agent.gene_range, agent.mutation_rate)
     add_agent_pos!(offspring, model)
     return
 end
@@ -166,7 +188,7 @@ plotkwargs = (;
 )
 
 stable_params = (;
-    n_sheep = 140,
+    n_sheep = 110,
     n_wolves = 20,
     dims = (30, 30),
     Δenergy_sheep = 5,
@@ -178,13 +200,15 @@ stable_params = (;
 
 sheepwolfgrass = initialize_model(;stable_params...)
 
+#=
 fig, ax, abmobs = abmplot(sheepwolfgrass;
     agent_step! = sheepwolf_step!,
     model_step! = grass_step!,
 plotkwargs...)
 fig
+=#
 
-#=
+
 sheep(a) = a isa Sheep
 wolf(a) = a isa Wolf
 count_grass(model) = count(model.fully_grown)
@@ -192,4 +216,3 @@ adata = [(sheep, count), (wolf, count)]
 mdata = [count_grass]
 adf, mdf = run!(sheepwolfgrass, sheepwolf_step!, grass_step!, 2000; adata, mdata)
 plot_population_timeseries(adf, mdf)
-=#
