@@ -32,6 +32,7 @@ function initialize_model(;
         sheep_mutation_rate = 0.1,
         wolf_mutation_rate = 0.1,
         grass_gene_range = 0.2,
+        grass_mutation_rate = 0.1,
         seed = 23182,
     )
 
@@ -46,6 +47,7 @@ function initialize_model(;
         regrowth_time = regrowth_time,
         gene_center = zeros(Float64, dims),
         gene_range = ones(Float64, dims) * grass_gene_range,
+        mutation_rate = ones(Float64, dims) * grass_mutation_rate,
     )
     model = ABM(Union{Sheep, Wolf}, space;
         properties, rng, scheduler = Schedulers.randomly, warn = false
@@ -150,13 +152,22 @@ end
 
 function grass_step!(model)
     @inbounds for p in positions(model)
-        adjacent = neighbors(p, model)
         if !(model.fully_grown[p...])
             if model.countdown[p...] ≤ 0
+                # Fully grown grass
                 model.fully_grown[p...] = true
                 model.countdown[p...] = model.regrowth_time
-            else
-                model.countdown[p...] -= 1
+            elseif model.countdown == model.regrowth_time
+                # Cloning grass if there is any adjacent fully grown squares
+                clone_choice = random_nearby_position(p, model, r=1; filter=pos->model.fully_grown[pos...])
+                if !isnothing(clone_choice)
+                    model.gene_center[p...] = model.gene_center[clone_choice...] + rand(model.rng, Normal(0, model.mutation_rate[clone_choice...]))
+                    model.countdown[p...] -= 1
+                end
+            end
+
+            if all(model.countdown .== model.regrowth_time)
+                print("everything is done")
             end
         end
     end
@@ -202,15 +213,15 @@ stable_params = (;
 
 sheepwolfgrass = initialize_model(;stable_params...)
 
-#=
+
 fig, ax, abmobs = abmplot(sheepwolfgrass;
     agent_step! = sheepwolf_step!,
     model_step! = grass_step!,
 plotkwargs...)
 fig
-=#
 
 
+#=
 sheep(a) = a isa Sheep
 wolf(a) = a isa Wolf
 count_grass(model) = count(model.fully_grown)
@@ -218,3 +229,4 @@ adata = [(sheep, count), (wolf, count)]
 mdata = [count_grass]
 adf, mdf = run!(sheepwolfgrass, sheepwolf_step!, grass_step!, 2000; adata, mdata)
 plot_population_timeseries(adf, mdf)
+=#
