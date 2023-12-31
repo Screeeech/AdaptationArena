@@ -131,9 +131,9 @@ end
 function reproduce!(agent::Sheep, model)
     agent.energy /= 2
     id = nextid(model)
-    
+    mutated_gene = clamp(agent.gene + rand(model.rng, Normal(0, agent.mutation_rate)), -1, 1)
     offspring = Sheep(id, agent.pos, agent.energy, agent.reproduction_prob, agent.Δenergy, 
-                        agent.gene, agent.mutation_rate)
+                        mutated_gene, agent.mutation_rate)
     add_agent_pos!(offspring, model)
     return
 end
@@ -141,14 +141,16 @@ end
 function reproduce!(agent::Wolf, model)
     agent.energy /= 2
     id = nextid(model)
+    mutated_gene_center = clamp(agent.gene_center + rand(model.rng, Normal(0, agent.mutation_rate)), -1, 1)
     offspring = Wolf(id, agent.pos, agent.energy, agent.reproduction_prob, agent.Δenergy, 
-                        agent.gene_center, agent.gene_range, agent.mutation_rate)
+                        mutated_gene_center, agent.gene_range, agent.mutation_rate)
     add_agent_pos!(offspring, model)
     return
 end
 
 function grass_step!(model)
-    @inbounds for p in positions(model) # we don't have to enable bound checking
+    @inbounds for p in positions(model)
+        adjacent = neighbors(p, model)
         if !(model.fully_grown[p...])
             if model.countdown[p...] ≤ 0
                 model.fully_grown[p...] = true
