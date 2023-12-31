@@ -33,6 +33,9 @@ function initialize_model(;
         wolf_mutation_rate = 0.1,
         grass_gene_range = 0.2,
         grass_mutation_rate = 0.1,
+        sheep_gene_distribution = truncated(Normal(0, 0.3), -1, 1),
+        wolf_gene_distribution = truncated(Normal(0, 0.3), -1, 1),
+        grass_gene_distribution = truncated(Normal(0, 0.3), -1, 1),
         seed = 23182,
     )
 
@@ -55,7 +58,6 @@ function initialize_model(;
 
     # Add agents
     # Initial distribution for sheep
-    sheep_gene_distribution = truncated(Normal(0, 0.3), -1, 1)
     for _ in 1:n_sheep
         energy = rand(model.rng, 1:(Δenergy_sheep*2)) - 1
         sheep_gene = rand(model.rng, sheep_gene_distribution)
@@ -63,7 +65,6 @@ function initialize_model(;
     end
 
     # Initial distribution for wolves
-    wolf_gene_distribution = truncated(Normal(0, 0.3), -1, 1)
     for _ in 1:n_wolves
         energy = rand(model.rng, 1:(Δenergy_wolf*2)) - 1 
         wolf_gene_center = rand(model.rng, wolf_gene_distribution)
@@ -71,7 +72,6 @@ function initialize_model(;
     end
 
     # Initial distribution for grass
-    grass_gene_distribution = truncated(Normal(0, 0.3), -1, 1)
     for p in positions(model)
         fully_grown = rand(model.rng, Bool)
         countdown = fully_grown ? regrowth_time : rand(model.rng, 1:regrowth_time) - 1
