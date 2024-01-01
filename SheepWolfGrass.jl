@@ -1,4 +1,4 @@
-module SheepWolfGrass
+module swg
 
 export initialize_model, sheepwolf_step!, grass_step!, Sheep, Wolf
 
@@ -40,6 +40,8 @@ function initialize_model(;
         sheep_gene_distribution = truncated(Normal(0, 0.3), -1, 1),
         wolf_gene_distribution = truncated(Normal(0, 0.3), -1, 1),
         grass_gene_distribution = truncated(Normal(0, 0.3), -1, 1),
+        wolf_hunt_range = 5,
+        sheep_hunt_range = 5,
         seed = 23182,
     )
 
@@ -51,7 +53,7 @@ function initialize_model(;
     properties = (
         fully_grown = falses(dims),
         countdown = zeros(Int, dims),
-        regrowth_time = regrowth_time,
+        regrowth_time = ones(Int32, dims) * regrowth_time,
         gene_center = zeros(Float64, dims),
         gene_range = ones(Float64, dims) * grass_gene_range,
         mutation_rate = ones(Float64, dims) * grass_mutation_rate,
@@ -87,7 +89,13 @@ function initialize_model(;
 end
 
 function sheepwolf_step!(sheep::Sheep, model)
-    randomwalk!(sheep, model)
+    nearby_grass = nearby_edible_grass(sheep, model, sheep.hunt_range)
+    if !isempty(nearby_grass)
+        target = sign.(get_direction(sheep.pos, chebyshev_nearest_position(sheep, nearby_grass), model))
+        walk!(sheep, target, model)
+    else
+        randomwalk!(sheep, model)
+    end
     sheep.energy -= 1
     if sheep.energy < 0
         remove_agent!(sheep, model)
@@ -100,14 +108,20 @@ function sheepwolf_step!(sheep::Sheep, model)
 end
 
 function sheepwolf_step!(wolf::Wolf, model)
-    randomwalk!(wolf, model; ifempty=false)
+    nearby_sheep = nearby_edible_sheep(wolf, model, wolf.hunt_range)
+    if !isempty(nearby_sheep)
+        target = sign.(get_direction(wolf.pos, chebyshev_nearest_position(wolf, nearby_sheep), model))
+        walk!(wolf, target, model; ifempty = false)
+    else
+        randomwalk!(wolf, model; ifempty = false)
+    end
     wolf.energy -= 1
     if wolf.energy < 0
         remove_agent!(wolf, model)
         return
     end
     # If there is any sheep on this grid cell, it's dinner time!
-    dinner = first_sheep_in_position(wolf.pos, model)
+    dinner = first_edible_sheep(wolf, model)
     !isnothing(dinner) && eat!(wolf, dinner, model)
     if rand(model.rng) ≤ wolf.reproduction_prob
         reproduce!(wolf, model)
@@ -116,7 +130,7 @@ end
 
 function nearby_edible_sheep(wolf::Wolf, model, r=5)
     nearby = collect(nearby_agents(wolf, model, r))
-    return filter(agent -> agent isa Sheep && abs(agent.gene - wolf.gene_center) < wolf.gene_range, nearby)
+    return map(x -> x.pos, filter(agent -> agent isa Sheep && abs(agent.gene - wolf.gene_center) < wolf.gene_range, nearby))
 end
 
 function nearby_edible_grass(sheep::Sheep, model, r=5)
@@ -124,9 +138,15 @@ function nearby_edible_grass(sheep::Sheep, model, r=5)
     return filter(pos -> model.fully_grown[pos...] && abs(model.gene_center[pos...] - sheep.gene) < model.gene_range[pos...], nearby)
 end
 
-function first_sheep_in_position(pos, model)
+function chebyshev_nearest_position(agent::A, positions) where {A <: AbstractAgent}
+    p = agent.pos
+    return reduce((x, y) -> max(abs.(x .- p)...) < max(abs.(y .- p)...) ? x : y, positions)
+end
+
+function first_edible_sheep(wolf::Wolf, model)
+    pos = wolf.pos
     ids = ids_in_position(pos, model)
-    j = findfirst(id -> model[id] isa Sheep, ids)
+    j = findfirst(id -> model[id] isa Sheep && abs(model[id].gene - wolf.gene_center) < wolf.gene_range, ids)
     isnothing(j) ? nothing : model[ids[j]]::Sheep
 end
 
@@ -170,7 +190,7 @@ function grass_step!(model)
             if model.countdown[p...] ≤ 0
                 # Fully grown grass
                 model.fully_grown[p...] = true
-                model.countdown[p...] = model.regrowth_time
+                model.countdown[p...] = model.regrowth_time[p...]
             elseif model.countdown[p...] == model.regrowth_time[p...]
                 # Cloning grass if there is any adjacent fully grown squares
                 clone_choice = random_nearby_position(p, model, r=1; filter=pos->model.fully_grown[pos...])

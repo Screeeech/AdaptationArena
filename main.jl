@@ -1,5 +1,6 @@
+using Revise
+
 include("SheepWolfGrass.jl")
-using .SheepWolfGrass
 
 using Agents, Random
 using Distributions
@@ -15,9 +16,9 @@ function plot_population_timeseries(adf, mdf)
     figure
 end
 
-offset(a) = a isa Sheep ? (-0.1, -0.1*rand()) : (+0.1, +0.1*rand())
-ashape(a) = a isa Sheep ? :circle : :utriangle
-acolor(a) = a isa Sheep ? RGBAf(1.0, 1.0, 1.0, 0.8) : RGBAf(0.2, 0.2, 0.3, 0.8)
+offset(a) = a isa swg.Sheep ? (-0.1, -0.1*rand()) : (+0.1, +0.1*rand())
+ashape(a) = a isa swg.Sheep ? :circle : :utriangle
+acolor(a) = a isa swg.Sheep ? RGBAf(1.0, 1.0, 1.0, 0.8) : RGBAf(0.2, 0.2, 0.3, 0.8)
 
 grasscolor(model) = model.countdown ./ model.regrowth_time
 heatkwargs = (colormap = [:brown, :green], colorrange = (0, 1))
@@ -33,30 +34,35 @@ plotkwargs = (;
 )
 
 stable_params = (;
-    n_sheep = 110,
-    n_wolves = 18,
+    n_sheep = 50,
+    n_wolves = 0,
     dims = (30, 30),
     Δenergy_sheep = 5,
     sheep_reproduce = 0.31,
     wolf_reproduce = 0.06,
     Δenergy_wolf = 30,
+    sheep_gene_distribution = truncated(Normal(-.5, .2), -1, 1),
+    wolf_gene_distribution = truncated(Normal(.5, .3), -1, 1),
+    grass_gene_distribution = truncated(Normal(0, .3), -1, 1),
+    wolf_gene_range = 0.1,
+    wolf_mutation_rate = 0.05,
+    grass_gene_range = 0.1,
     seed = 71758,
 )
 
-sheepwolfgrass = initialize_model(;stable_params...)
+sheepwolfgrass = swg.initialize_model(;stable_params...)
 
 #=
 fig, ax, abmobs = abmplot(sheepwolfgrass;
-    agent_step! = sheepwolf_step!,
-    model_step! = grass_step!,
+    agent_step! = swg.sheepwolf_step!,
+    model_step! = swg.grass_step!,
 plotkwargs...)
 fig
 =#
-
-sheep(a) = a isa Sheep
-wolf(a) = a isa Wolf
+sheep(a) = a isa swg.Sheep
+wolf(a) = a isa swg.Wolf
 count_grass(model) = count(model.fully_grown)
 adata = [(sheep, count), (wolf, count)]
 mdata = [count_grass]
-adf, mdf = run!(sheepwolfgrass, sheepwolf_step!, grass_step!, 2000; adata, mdata)
+adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 2000; adata, mdata)
 plot_population_timeseries(adf, mdf)
