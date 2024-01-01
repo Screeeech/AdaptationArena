@@ -114,6 +114,16 @@ function sheepwolf_step!(wolf::Wolf, model)
     end
 end
 
+function nearby_edible_sheep(wolf::Wolf, model, r=5)
+    nearby = collect(nearby_agents(wolf, model, r))
+    return filter(agent -> agent isa Sheep && abs(agent.gene - wolf.gene_center) < wolf.gene_range, nearby)
+end
+
+function nearby_edible_grass(sheep::Sheep, model, r=5)
+    nearby = collect(nearby_positions(sheep, model, r))
+    return filter(pos -> model.fully_grown[pos...] && abs(model.gene_center[pos...] - sheep.gene) < model.gene_range[pos...], nearby)
+end
+
 function first_sheep_in_position(pos, model)
     ids = ids_in_position(pos, model)
     j = findfirst(id -> model[id] isa Sheep, ids)
