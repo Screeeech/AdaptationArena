@@ -34,18 +34,20 @@ plotkwargs = (;
 )
 
 stable_params = (;
-    n_sheep = 50,
-    n_wolves = 18,
+    n_sheep = 100,
+    n_wolves = 20,
     dims = (30, 30),
+    regrowth_time = 30,
     Δenergy_sheep = 5,
-    sheep_reproduce = 0.31,
+    sheep_reproduce = 0.30,
     wolf_reproduce = 0.06,
     Δenergy_wolf = 30,
-    sheep_gene_distribution = truncated(Normal(-.5, .2), -1, 1),
-    wolf_gene_distribution = truncated(Normal(.5, .3), -1, 1),
+    sheep_gene_distribution = truncated(Normal(-.5, .3), -1, 1),
+    wolf_gene_distribution = truncated(Normal(.5, .2), -1, 1),
     grass_gene_distribution = truncated(Normal(0, .3), -1, 1),
-    wolf_gene_range = 0.1,
-    wolf_mutation_rate = 0.05,
+    wolf_gene_range = 0.12,
+    sheep_mutation_rate = 0.1,
+    wolf_mutation_rate = 0.03,
     grass_gene_range = 0.1,
     seed = 71758,
 )
