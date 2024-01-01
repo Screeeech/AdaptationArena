@@ -12,6 +12,7 @@ using GLMakie
     Δenergy::Float64
     gene::Float64
     mutation_rate::Float64
+    hunt_range::Int
 end
 
 @agent Wolf GridAgent{2} begin
@@ -21,6 +22,7 @@ end
     gene_center::Float64
     gene_range::Float64
     mutation_rate::Float64
+    hunt_range::Int
 end
 
 function initialize_model(;
@@ -67,14 +69,14 @@ function initialize_model(;
     for _ in 1:n_sheep
         energy = rand(model.rng, 1:(Δenergy_sheep*2)) - 1
         sheep_gene = rand(model.rng, sheep_gene_distribution)
-        add_agent!(Sheep, model, energy, sheep_reproduce, Δenergy_sheep, sheep_gene, sheep_mutation_rate)
+        add_agent!(Sheep, model, energy, sheep_reproduce, Δenergy_sheep, sheep_gene, sheep_mutation_rate, sheep_hunt_range)
     end
 
     # Initial distribution for wolves
     for _ in 1:n_wolves
         energy = rand(model.rng, 1:(Δenergy_wolf*2)) - 1 
         wolf_gene_center = rand(model.rng, wolf_gene_distribution)
-        add_agent!(Wolf, model, energy, wolf_reproduce, Δenergy_wolf, wolf_gene_center, wolf_gene_range, wolf_mutation_rate)
+        add_agent!(Wolf, model, energy, wolf_reproduce, Δenergy_wolf, wolf_gene_center, wolf_gene_range, wolf_mutation_rate, wolf_hunt_range)
     end
 
     # Initial distribution for grass
@@ -169,7 +171,7 @@ function reproduce!(agent::Sheep, model)
     id = nextid(model)
     mutated_gene = clamp(agent.gene + rand(model.rng, Normal(0, agent.mutation_rate)), -1, 1)
     offspring = Sheep(id, agent.pos, agent.energy, agent.reproduction_prob, agent.Δenergy, 
-                        mutated_gene, agent.mutation_rate)
+                        mutated_gene, agent.mutation_rate, agent.hunt_range)
     add_agent_pos!(offspring, model)
     return
 end
@@ -179,7 +181,7 @@ function reproduce!(agent::Wolf, model)
     id = nextid(model)
     mutated_gene_center = clamp(agent.gene_center + rand(model.rng, Normal(0, agent.mutation_rate)), -1, 1)
     offspring = Wolf(id, agent.pos, agent.energy, agent.reproduction_prob, agent.Δenergy, 
-                        mutated_gene_center, agent.gene_range, agent.mutation_rate)
+                        mutated_gene_center, agent.gene_range, agent.mutation_rate, agent.hunt_range)
     add_agent_pos!(offspring, model)
     return
 end

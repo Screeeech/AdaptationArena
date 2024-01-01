@@ -35,7 +35,7 @@ plotkwargs = (;
 
 stable_params = (;
     n_sheep = 50,
-    n_wolves = 0,
+    n_wolves = 18,
     dims = (30, 30),
     Δenergy_sheep = 5,
     sheep_reproduce = 0.31,
