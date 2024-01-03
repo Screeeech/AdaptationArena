@@ -207,4 +207,12 @@ function grass_step!(model)
     end
 end
 
+function sheep_gene_values(sheep)
+    return [i.gene for i in sheep]
+end
+
+function wolf_gene_values(wolf)
+    return [i.gene_center for i in wolf]
+end
+
 end

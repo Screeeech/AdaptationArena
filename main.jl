@@ -5,6 +5,9 @@ include("SheepWolfGrass.jl")
 using Agents, Random
 using Distributions
 using GLMakie
+using Plots
+
+gr()
 
 function plot_population_timeseries(adf, mdf)
     figure = Figure(resolution = (600, 400))
@@ -33,10 +36,11 @@ plotkwargs = (;
     heatkwargs = heatkwargs,
 )
 
+dims = (30, 30)
 stable_params = (;
     n_sheep = 100,
     n_wolves = 20,
-    dims = (30, 30),
+    dims = dims,
     regrowth_time = 30,
     Δenergy_sheep = 5,
     sheep_reproduce = 0.30,
@@ -61,10 +65,44 @@ fig, ax, abmobs = abmplot(sheepwolfgrass;
 plotkwargs...)
 fig
 =#
+
+
 sheep(a) = a isa swg.Sheep
 wolf(a) = a isa swg.Wolf
 count_grass(model) = count(model.fully_grown)
-adata = [(sheep, count), (wolf, count)]
+adata = [(sheep, count), (wolf, count), (sheep, swg.sheep_gene_values)]
 mdata = [count_grass]
-adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 2000; adata, mdata)
-plot_population_timeseries(adf, mdf)
+
+T = 1000
+pop_data = zeros(T, 3)
+sheep_genes = []
+wolf_genes = []
+grass_genes = zeros(T, dims[1]*dims[2])
+
+for i in 1:T
+    all_agents = collect(allagents(sheepwolfgrass))
+    pop_data[i, :] = [count(sheep, all_agents), count(wolf, all_agents), count_grass(sheepwolfgrass)]
+    push!(sheep_genes, [a.gene for a in filter(sheep, all_agents)])
+    push!(wolf_genes, [a.gene_center for a in filter(wolf, all_agents)])
+    for p in positions(sheepwolfgrass)
+        grass_genes[i, p[1]+(p[2]-1)*dims[2]] = sheepwolfgrass.gene_center[p...]
+    end
+
+    run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 1)
+end
+
+function generate_histogram(time_step)
+    p1 = histogram(sheep_genes[time_step], bins=10, xlims=(-1, 1), ylims=(0, 50), alpha=0.5)
+    p2 = histogram(wolf_genes[time_step], bins=10, alpha=0.5, xlims=(-1, 1), ylims=(0, 50))
+    p3 = histogram(grass_genes[time_step, :], bins=6:10, alpha=0.5, xlims=(-1, 1), ylims=(0, 500))
+    Plots.plot(p1, p2, p3, layout=(1, 3), size=(900, 300))
+end
+
+# Generate animation frames using the 'animate' function
+anim = @animate for i in 1:length(sheep_genes)
+    generate_histogram(i)
+end
+
+# Display the animation
+gif(anim, "histogram_animation.gif", fps = 50)
+# plot_population_timeseries(adf, mdf)
