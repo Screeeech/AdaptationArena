@@ -197,7 +197,7 @@ function grass_step!(model)
                 # Cloning grass if there is any adjacent fully grown squares
                 clone_choice = random_nearby_position(p, model, r=1; filter=pos->model.fully_grown[pos...])
                 if !isnothing(clone_choice)
-                    model.gene_center[p...] = model.gene_center[clone_choice...] + rand(model.rng, Normal(0, model.mutation_rate[clone_choice...]))
+                    model.gene_center[p...] = clamp(model.gene_center[clone_choice...] + rand(model.rng, Normal(0, model.mutation_rate[clone_choice...])), -1, 1)
                     model.countdown[p...] -= 1
                 end
             else

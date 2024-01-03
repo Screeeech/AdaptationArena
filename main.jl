@@ -44,7 +44,25 @@ stable_params = (;
     regrowth_time = 30,
     Δenergy_sheep = 5,
     sheep_reproduce = 0.30,
-    wolf_reproduce = 0.06,
+    wolf_reproduce = 0.05,
+    Δenergy_wolf = 30,
+    sheep_gene_distribution = truncated(Normal(-.5, .3), -1, 1),
+    wolf_gene_distribution = truncated(Normal(.5, .2), -1, 1),
+    grass_gene_distribution = truncated(Normal(0, .3), -1, 1),
+    wolf_gene_range = 0.12,
+    sheep_mutation_rate = 0.1,
+    wolf_mutation_rate = 0.03,
+    grass_gene_range = 0.1,
+    seed = 71758,
+)
+exp_params = (;
+    n_sheep = 100,
+    n_wolves = 20,
+    dims = dims,
+    regrowth_time = 30,
+    Δenergy_sheep = 5,
+    sheep_reproduce = 0.30,
+    wolf_reproduce = 0.05,
     Δenergy_wolf = 30,
     sheep_gene_distribution = truncated(Normal(-.5, .3), -1, 1),
     wolf_gene_distribution = truncated(Normal(.5, .2), -1, 1),
@@ -56,7 +74,52 @@ stable_params = (;
     seed = 71758,
 )
 
+
 sheepwolfgrass = swg.initialize_model(;stable_params...)
+
+
+sheep(a) = a isa swg.Sheep
+wolf(a) = a isa swg.Wolf
+count_grass(model) = count(model.fully_grown)
+
+function gather_data(model, T)
+    pop_data = zeros(T, 3)
+    sheep_genes = []
+    wolf_genes = []
+    grass_genes = []
+
+    for i in 1:T
+        all_agents = collect(allagents(sheepwolfgrass))
+        pop_data[i, :] = [count(sheep, all_agents), count(wolf, all_agents), count_grass(sheepwolfgrass)]
+        push!(sheep_genes, [a.gene for a in filter(sheep, all_agents)])
+        push!(wolf_genes, [a.gene_center for a in filter(wolf, all_agents)])
+        push!(grass_genes, [sheepwolfgrass.gene_center[p...] for p in positions(sheepwolfgrass)])
+        run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 1)
+    end
+
+    return pop_data, sheep_genes, wolf_genes, grass_genes
+end
+
+function generate_histogram(time_step)
+    histogram(sheep_genes[time_step], bins=-1:.2:1, xlims=(-1, 1), ylims=(0, 100), alpha=0.5, label="Sheep")
+    histogram!(wolf_genes[time_step], bins=-1:.1:1, alpha=0.5, xlims=(-1, 1), ylims=(0, 100), label="Wolves")
+
+    twinx()
+    histogram!(grass_genes[time_step, :], bins=-1:.2:1,alpha=0.2, xlims=(-1, 1), ylims=(0,250), label="Grass", color=:green)
+    Plots.yticks!(0:50:250)
+    Plots.plot!(legend=:topright)
+end
+
+function gene_means(genes)
+    means = zeros(size(genes[1])[1], length(genes))
+    yerr = zeros(size(genes[1])[1], length(genes))
+    for i in 1:size(means)[2]
+        means[:, i] = mean.(genes[i])
+        yerr[:, i] = std.(genes[i])
+    end
+    # Plot means with error shown as ribbons
+    return means, yerr
+end
 
 #=
 fig, ax, abmobs = abmplot(sheepwolfgrass;
@@ -66,43 +129,23 @@ plotkwargs...)
 fig
 =#
 
+#=
+adata = [(sheep, count), (wolf, count)]
+adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 2000; adata, mdata)
+plot_population_timeseries(adf, mdf)
+=#
 
-sheep(a) = a isa swg.Sheep
-wolf(a) = a isa swg.Wolf
-count_grass(model) = count(model.fully_grown)
-adata = [(sheep, count), (wolf, count), (sheep, swg.sheep_gene_values)]
-mdata = [count_grass]
-
-T = 1000
-pop_data = zeros(T, 3)
-sheep_genes = []
-wolf_genes = []
-grass_genes = zeros(T, dims[1]*dims[2])
-
-for i in 1:T
-    all_agents = collect(allagents(sheepwolfgrass))
-    pop_data[i, :] = [count(sheep, all_agents), count(wolf, all_agents), count_grass(sheepwolfgrass)]
-    push!(sheep_genes, [a.gene for a in filter(sheep, all_agents)])
-    push!(wolf_genes, [a.gene_center for a in filter(wolf, all_agents)])
-    for p in positions(sheepwolfgrass)
-        grass_genes[i, p[1]+(p[2]-1)*dims[2]] = sheepwolfgrass.gene_center[p...]
-    end
-
-    run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 1)
-end
-
-function generate_histogram(time_step)
-    p1 = histogram(sheep_genes[time_step], bins=10, xlims=(-1, 1), ylims=(0, 50), alpha=0.5)
-    p2 = histogram(wolf_genes[time_step], bins=10, alpha=0.5, xlims=(-1, 1), ylims=(0, 50))
-    p3 = histogram(grass_genes[time_step, :], bins=6:10, alpha=0.5, xlims=(-1, 1), ylims=(0, 500))
-    Plots.plot(p1, p2, p3, layout=(1, 3), size=(900, 300))
-end
-
-# Generate animation frames using the 'animate' function
+#=
 anim = @animate for i in 1:length(sheep_genes)
     generate_histogram(i)
 end
-
-# Display the animation
 gif(anim, "histogram_animation.gif", fps = 50)
-# plot_population_timeseries(adf, mdf)
+=#
+
+#=
+pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(sheepwolfgrass, 2000)
+gene_mean, gene_err = gene_means((sheep_genes, wolf_genes, grass_genes))
+Plots.plot(gene_mean[:, 3], ribbon=gene_err[:, 3], color=3, label="Grass", legend=:topright, xlabel="Time", ylabel="Gene Mean")
+Plots.plot!(gene_mean[:, 1], ribbon=gene_err[:, 1], color=1, label="Sheep")
+Plots.plot!(gene_mean[:, 2], ribbon=gene_err[:, 2], color=2, label="Wolves")
+=#
