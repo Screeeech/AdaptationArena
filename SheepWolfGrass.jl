@@ -153,7 +153,7 @@ function first_edible_sheep(wolf::Wolf, model)
 end
 
 function eat!(sheep::Sheep, model)
-    if model.fully_grown[sheep.pos...]
+    if model.fully_grown[sheep.pos...] && abs(model.gene_center[sheep.pos...] - sheep.gene) < model.gene_range[sheep.pos...]
         sheep.energy += sheep.Δenergy
         model.fully_grown[sheep.pos...] = false
     end
