@@ -6,6 +6,7 @@ using Agents, Random
 using Distributions
 using GLMakie
 using Plots
+using ProgressBars
 
 # gr()
 
@@ -81,6 +82,33 @@ function gene_means(genes)
     return means, yerr
 end
 
+function grid_search_pop(params, mutation_vals, reproduce_vals; n=10, T=2000)
+    grid = zeros(length(mutation_vals), length(reproduce_vals))
+    params_cp = Dict(pairs(params))
+    for (i,vm) in ProgressBar(enumerate(mutation_vals)), (j,vr) in ProgressBar(enumerate(reproduce_vals))
+        avg_extinction = 0
+        for k in ProgressBar(1:n)
+            params_cp[:wolf_mutation_rate] = vm
+            params_cp[:wolf_reproduce] = vr
+            params_cp[:seed] += k-1
+            model = swg.initialize_model(;NamedTuple(params_cp)...)
+
+            t = 1
+            wolf_pop = zeros(T)
+            wolf_pop[i] = -1
+            while t <= T && wolf_pop[i] != 0
+                all_agents = collect(allagents(model))
+                wolf_pop[i] = count(wolf, all_agents)
+                run!(model, swg.sheepwolf_step!, swg.grass_step!, 1)
+                t += 1
+            end
+            avg_extinction += t/n
+        end
+        grid[i,j] = avg_extinction
+    end
+    return grid
+end
+
 # Here is all the actual interaction code
 stable_params = (;
     n_sheep = 100,
@@ -129,9 +157,13 @@ plotkwargs...)
 fig
 =#
 
+
+#=
 adata = [(sheep, count), (wolf, count)]
+mdata = [count_grass]
 adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 3000; adata, mdata)
 plot_population_timeseries(adf, mdf)
+=#
 
 # pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(sheepwolfgrass, 3000)
 
@@ -148,3 +180,8 @@ Plots.plot(gene_mean[:, 3], ribbon=gene_err[:, 3], color=3, label="Grass", legen
 Plots.plot!(gene_mean[:, 1], ribbon=gene_err[:, 1], color=1, label="Sheep", lw=3)
 Plots.plot!(gene_mean[:, 2], ribbon=gene_err[:, 2], color=2, label="Wolves", lw=3)
 =#
+
+mutation_vals = 0:.05:.5
+reproduce_vals = 0:.01:.3
+grid = grid_search_pop(exp_params, mutation_vals, reproduce_vals; n=10, T=2000)
+Plots.heatmap(reproduce_vals, mutation_vals, grid)
