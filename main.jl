@@ -6,7 +6,7 @@ using Agents, Random
 using Distributions
 using GLMakie
 using Plots
-using ProgressBars
+using ProgressMeter
 
 # gr()
 
@@ -51,12 +51,12 @@ function gather_data(model, T)
     grass_genes = []
 
     for i in 1:T
-        all_agents = collect(allagents(sheepwolfgrass))
-        pop_data[i, :] = [count(sheep, all_agents), count(wolf, all_agents), count_grass(sheepwolfgrass)]
+        all_agents = collect(allagents(model))
+        pop_data[i, :] = [count(sheep, all_agents), count(wolf, all_agents), count_grass(model)]
         push!(sheep_genes, [a.gene for a in filter(sheep, all_agents)])
         push!(wolf_genes, [a.gene_center for a in filter(wolf, all_agents)])
-        push!(grass_genes, [sheepwolfgrass.gene_center[p] for p in 1:dims[1]*dims[2]])
-        run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 1)
+        push!(grass_genes, [model.gene_center[p] for p in 1:dims[1]*dims[2]])
+        run!(model, swg.sheepwolf_step!, swg.grass_step!, 1)
     end
 
     return pop_data, sheep_genes, wolf_genes, grass_genes
@@ -85,26 +85,33 @@ end
 function grid_search_pop(params, mutation_vals, reproduce_vals; n=10, T=2000)
     grid = zeros(length(mutation_vals), length(reproduce_vals))
     params_cp = Dict(pairs(params))
-    for (i,vm) in ProgressBar(enumerate(mutation_vals)), (j,vr) in ProgressBar(enumerate(reproduce_vals))
-        avg_extinction = 0
-        for k in ProgressBar(1:n)
-            params_cp[:wolf_mutation_rate] = vm
-            params_cp[:wolf_reproduce] = vr
-            params_cp[:seed] += k-1
-            model = swg.initialize_model(;NamedTuple(params_cp)...)
 
-            t = 1
-            wolf_pop = zeros(T)
-            wolf_pop[i] = -1
-            while t <= T && wolf_pop[i] != 0
-                all_agents = collect(allagents(model))
-                wolf_pop[i] = count(wolf, all_agents)
-                run!(model, swg.sheepwolf_step!, swg.grass_step!, 1)
-                t += 1
+    p = Progress(length(mutation_vals)*length(reproduce_vals), 1)
+    Threads.@threads for i in eachindex(mutation_vals)
+        Threads.@threads for j in eachindex(reproduce_vals)
+            vm = mutation_vals[i]
+            vr = reproduce_vals[j]
+            avg_extinction = 0
+            Threads.@threads for k in 1:n
+                params_cp[:wolf_mutation_rate] = vm
+                params_cp[:wolf_reproduce] = vr
+                params_cp[:seed] += k-1
+                model = swg.initialize_model(;NamedTuple(params_cp)...)
+
+                t = 1
+                wolf_pop = zeros(T)
+                wolf_pop[i] = -1
+                while t <= T && wolf_pop[i] != 0
+                    all_agents = collect(allagents(model))
+                    wolf_pop[i] = count(wolf, all_agents)
+                    run!(model, swg.sheepwolf_step!, swg.grass_step!, 1)
+                    t += 1
+                end
+                avg_extinction += t/n
             end
-            avg_extinction += t/n
+            grid[i,j] = avg_extinction
+            next!(p)
         end
-        grid[i,j] = avg_extinction
     end
     return grid
 end
@@ -130,7 +137,7 @@ stable_params = (;
 )
 exp_params = (;
     n_sheep = 80,
-    n_wolves = 30,
+    n_wolves = 10,
     dims = dims,
     Δenergy_sheep = 5,
     Δenergy_wolf = 30,
@@ -140,7 +147,7 @@ exp_params = (;
     sheep_reproduce = 0.3,
     wolf_reproduce = 0.01,
     regrowth_time = 30,
-    wolf_gene_range = 0.05,
+    wolf_gene_range = 0.1,
     grass_gene_range = 0.1,
     sheep_mutation_rate = 0.3,
     wolf_mutation_rate = 0.01,
@@ -181,7 +188,7 @@ Plots.plot!(gene_mean[:, 1], ribbon=gene_err[:, 1], color=1, label="Sheep", lw=3
 Plots.plot!(gene_mean[:, 2], ribbon=gene_err[:, 2], color=2, label="Wolves", lw=3)
 =#
 
-mutation_vals = 0:.05:.5
-reproduce_vals = 0:.01:.3
-grid = grid_search_pop(exp_params, mutation_vals, reproduce_vals; n=10, T=2000)
-Plots.heatmap(reproduce_vals, mutation_vals, grid)
+mutation_vals = LinRange(0, 0.3, 10)
+reproduce_vals = LinRange(0, 0.3, 10)
+grid = grid_search_pop(exp_params, mutation_vals, reproduce_vals; n=10, T=200)
+Plots.heatmap(reproduce_vals, mutation_vals, grid, xlabel="Reproduction Rate", ylabel="Mutation Rate", title="Extinction Time")
