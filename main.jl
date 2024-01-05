@@ -7,6 +7,8 @@ using Distributions
 using GLMakie
 using Plots
 using ProgressMeter
+using DataFrames
+using JLD2
 
 # gr()
 
@@ -118,19 +120,19 @@ function grid_search_pop(params, mutation_vals, reproduce_vals; n=10, T=2000)
 end
 
 
-function particle_swarm_optimization_params(params; n_particles=10, n_iterations=100, T=1000)
-    # Symbols to optimize
-    optimize_params = [:sheep_reproduce, :wolf_reproduce, :sheep_mutation_rate, :wolf_mutation_rate, 
-                        :grass_mutation_rate, :grass_gene_range, :wolf_gene_range, :energy_transfer]
+function particle_swarm_optimization_params(optimize_params, params; n_particles=10, n_iterations=100, T=1000)
     # Initialize particles
     n_params = length(optimize_params)
-    particles = rand(Uniform(0, 1), n_particles, n_params)
+    particles = rand(Uniform(0.01, 1), n_particles, n_params)
     velocities = zeros(n_particles, n_params)
     best_positions = copy(particles)
     best_values = zeros(n_particles)
     global_best_position = zeros(n_params)
     global_best_value = 0
     original_seed = params[:seed]
+
+    # Full data
+    data = zeros(n_particles*(n_iterations+1), n_params + 1)
 
     # Initialize model
     model = swg.initialize_model(;NamedTuple(params)...)
@@ -142,20 +144,30 @@ function particle_swarm_optimization_params(params; n_particles=10, n_iterations
             params_cp[optimize_params[j]] = particles[i, j]
         end
         model = swg.initialize_model(;NamedTuple(params_cp)...)
-        pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(model, T)
+
+        extinction_time = 0
+        for j in 1:10
+            params_cp[:seed] = original_seed + j - 1
+            model = swg.initialize_model(;NamedTuple(params_cp)...)
+            pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(model, T)
+            extinction_time += (isnothing(findfirst(pop_data[:,2] .== 0)) ? T : findfirst(pop_data[:,2] .== 0))/10
+        end
+
+        data[i, 1:n_params] = particles[i, :]
+        data[i, n_params + 1] = extinction_time
         # Best value is the point when the wolf population goes extinct
-        best_values[i] = isnothing(findfirst(pop_data[:, 2] .== 0)) ? T : findfirst(pop_data[:, 2] .== 0)
+        best_values[i] = extinction_time
     end
 
     # Iterate
-    for i in ProgressMeter(1:n_iterations)
+    @showprogress for i in 1:n_iterations
         # Didn't add multithreading for asynchronous updating
         for j in 1:n_particles
             # Update velocity
             velocities[j, :] = 0.5*velocities[j, :] + 2*rand(Uniform(0, 1), n_params).*(best_positions[j, :] - particles[j, :]) + 2*rand(Uniform(0, 1), n_params).*(global_best_position - particles[j, :])
             # Update position
             particles[j, :] += velocities[j, :]
-            particles[j, :] = clamp.(particles[j, :], 0, 1)
+            particles[j, :] = clamp.(particles[j, :], 0.01, 1)
             params_cp = Dict(pairs(params))
 
             for k in 1:n_params
@@ -169,7 +181,9 @@ function particle_swarm_optimization_params(params; n_particles=10, n_iterations
                 pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(model, T)
                 extinction_time += (isnothing(findfirst(pop_data[:,2] .== 0)) ? T : findfirst(pop_data[:,2] .== 0))/10
             end
-            println(extinction_time, " ", best_values[j])
+            data[i*n_particles + j, 1:n_params] = particles[j, :]
+            data[i*n_particles + j, n_params + 1] = extinction_time
+
             if extinction_time > best_values[j]
                 best_values[j] = extinction_time
                 best_positions[j, :] = particles[j, :]
@@ -186,7 +200,16 @@ function particle_swarm_optimization_params(params; n_particles=10, n_iterations
     for i in 1:n_params
         params_cp[optimize_params[i]] = global_best_position[i]
     end
-    return params_cp
+    return params_cp, data
+end
+
+function pairplot(df)
+    rows, cols = size(df)
+    plots = []
+    for row = 1:rows, col = 1:cols
+        push!(plots, Plots.scatter(row, col))
+    end
+    Plots.plot([p for p in plots]..., layout = (rows, cols), legend=false, size = (1000, 1000))
 end
 
 # Here is all the actual interaction code
@@ -218,7 +241,7 @@ exp_params = (;
     Δenergy_wolf = 30,
     sheep_gene_distribution = truncated(Normal(-1, .3), -1, 1),
     wolf_gene_distribution = truncated(Normal(0, .3), -1, 1),
-    grass_gene_distribution = truncated(Normal(0, .1), -1, 1),
+    grass_gene_distribution = truncated(Normal(0, .3), -1, 1),
     sheep_reproduce = 0.5,
     wolf_reproduce = 0.2,
     regrowth_time = 30,
@@ -230,9 +253,9 @@ exp_params = (;
     energy_transfer = 0.3,
     seed = 71759,
 )
-sheepwolfgrass = swg.initialize_model(;exp_params...)
 
 #=
+sheepwolfgrass = swg.initialize_model(;exp_params...)
 fig, ax, abmobs = abmplot(sheepwolfgrass;
     agent_step! = swg.sheepwolf_step!,
     model_step! = swg.grass_step!,
@@ -240,13 +263,20 @@ plotkwargs...)
 fig
 =#
 
+# Symbols to optimize
+optimize = [:sheep_reproduce, :wolf_reproduce, :sheep_mutation_rate, :wolf_mutation_rate, 
+                    :grass_mutation_rate, :grass_gene_range, :wolf_gene_range]
+optimized_params, scatter_data = particle_swarm_optimization_params(optimize, exp_params; n_particles=20, n_iterations=10, T=2000)
+scatter_data = DataFrame(scatter_data, [optimize... :extinction_time])
+@save "data.jld2" scatter_data optimized_params
 
-optimized_params = particle_swarm_optimization_params(exp_params)
+#=
 sheepwolfgrass = swg.initialize_model(;optimized_params...)
 adata = [(sheep, count), (wolf, count)]
 mdata = [count_grass]
 adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 1000; adata, mdata)
 plot_population_timeseries(adf, mdf)
+=#
 
 
 
@@ -267,8 +297,8 @@ Plots.plot!(gene_mean[:, 2], ribbon=gene_err[:, 2], color=2, label="Wolves", lw=
 =#
 
 #=
-mutation_vals = LinRange(0, 0.3, 10)
-reproduce_vals = LinRange(0, 0.3, 10)
-grid = grid_search_pop(exp_params, mutation_vals, reproduce_vals; n=10, T=200)
+mutation_vals = LinRange(0, 0.25, 50)
+reproduce_vals = LinRange(0, 0.3, 60)
+grid = grid_search_pop(exp_params, mutation_vals, reproduce_vals; n=10, T=2000)
 Plots.heatmap(reproduce_vals, mutation_vals, grid, xlabel="Reproduction Rate", ylabel="Mutation Rate", title="Extinction Time")
 =#
