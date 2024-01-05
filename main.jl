@@ -167,7 +167,7 @@ function particle_swarm_optimization_params(optimize_params, params; n_particles
             velocities[j, :] = 0.5*velocities[j, :] + 2*rand(Uniform(0, 1), n_params).*(best_positions[j, :] - particles[j, :]) + 2*rand(Uniform(0, 1), n_params).*(global_best_position - particles[j, :])
             # Update position
             particles[j, :] += velocities[j, :]
-            particles[j, :] = clamp.(particles[j, :], 0.01, 1)
+            particles[j, :] = clamp.(particles[j, :], 0.1, 1)
             params_cp = Dict(pairs(params))
 
             for k in 1:n_params
@@ -203,14 +203,6 @@ function particle_swarm_optimization_params(optimize_params, params; n_particles
     return params_cp, data
 end
 
-function pairplot(df)
-    rows, cols = size(df)
-    plots = []
-    for row = 1:rows, col = 1:cols
-        push!(plots, Plots.scatter(row, col))
-    end
-    Plots.plot([p for p in plots]..., layout = (rows, cols), legend=false, size = (1000, 1000))
-end
 
 # Here is all the actual interaction code
 stable_params = (;
@@ -265,10 +257,10 @@ fig
 
 # Symbols to optimize
 optimize = [:sheep_reproduce, :wolf_reproduce, :sheep_mutation_rate, :wolf_mutation_rate, 
-                    :grass_mutation_rate, :grass_gene_range, :wolf_gene_range]
+            :grass_mutation_rate, :grass_gene_range, :wolf_gene_range]
 optimized_params, scatter_data = particle_swarm_optimization_params(optimize, exp_params; n_particles=20, n_iterations=10, T=2000)
-scatter_data = DataFrame(scatter_data, [optimize... :extinction_time])
-@save "data.jld2" scatter_data optimized_params
+scatter_data = DataFrame(scatter_data, [optimize..., :extinction_time])
+# @save "data.jld2" scatter_data optimized_params
 
 #=
 sheepwolfgrass = swg.initialize_model(;optimized_params...)

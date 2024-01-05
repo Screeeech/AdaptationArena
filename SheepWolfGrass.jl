@@ -127,7 +127,7 @@ function sheepwolf_step!(wolf::Wolf, model)
         end
         # If there is any sheep on this grid cell, it's dinner time!
         dinner = first_edible_sheep(wolf, model)
-        !isnothing(dinner) && eat!(wolf, dinner, model)
+        (!isnothing(dinner) && wolf.energy < wolf.Δenergy*2) && eat!(wolf, dinner, model)
         if rand(model.rng) ≤ wolf.reproduction_prob
             reproduce!(wolf, model)
         end
