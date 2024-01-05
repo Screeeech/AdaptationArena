@@ -44,6 +44,7 @@ function initialize_model(;
         grass_gene_distribution = truncated(Normal(0, 0.3), -1, 1),
         wolf_hunt_range = 5,
         sheep_hunt_range = 5,
+        energy_transfer = 0.25,
         seed = 23182,
     )
 
@@ -59,6 +60,7 @@ function initialize_model(;
         gene_center = zeros(Float64, dims),
         gene_range = ones(Float64, dims) * grass_gene_range,
         mutation_rate = ones(Float64, dims) * grass_mutation_rate,
+        energy_transfer = energy_transfer,
     )
     model = ABM(Union{Sheep, Wolf}, space;
         properties, rng, scheduler = Schedulers.randomly, warn = false
@@ -110,23 +112,25 @@ function sheepwolf_step!(sheep::Sheep, model)
 end
 
 function sheepwolf_step!(wolf::Wolf, model)
-    nearby_sheep = nearby_edible_sheep(wolf, model, wolf.hunt_range)
-    if !isempty(nearby_sheep)
-        target = sign.(get_direction(wolf.pos, chebyshev_nearest_position(wolf, nearby_sheep), model))
-        walk!(wolf, target, model; ifempty = false)
-    else
-        randomwalk!(wolf, model; ifempty = false)
-    end
-    wolf.energy -= 1
-    if wolf.energy < 0
-        remove_agent!(wolf, model)
-        return
-    end
-    # If there is any sheep on this grid cell, it's dinner time!
-    dinner = first_edible_sheep(wolf, model)
-    !isnothing(dinner) && eat!(wolf, dinner, model)
-    if rand(model.rng) ≤ wolf.reproduction_prob
-        reproduce!(wolf, model)
+    for i in 1:1
+        nearby_sheep = nearby_edible_sheep(wolf, model, wolf.hunt_range)
+        if !isempty(nearby_sheep)
+            target = sign.(get_direction(wolf.pos, chebyshev_nearest_position(wolf, nearby_sheep), model))
+            walk!(wolf, target, model; ifempty = false)
+        else
+            randomwalk!(wolf, model; ifempty = false)
+        end
+        wolf.energy -= 1
+        if wolf.energy < 0
+            remove_agent!(wolf, model)
+            return
+        end
+        # If there is any sheep on this grid cell, it's dinner time!
+        dinner = first_edible_sheep(wolf, model)
+        !isnothing(dinner) && eat!(wolf, dinner, model)
+        if rand(model.rng) ≤ wolf.reproduction_prob
+            reproduce!(wolf, model)
+        end
     end
 end
 
@@ -162,7 +166,8 @@ end
 
 function eat!(wolf::Wolf, sheep::Sheep, model)
     remove_agent!(sheep, model)
-    wolf.energy += wolf.Δenergy
+    # wolf.energy += sheep.energy * model.energy_transfer
+    wolf.energy = min(wolf.Δenergy*3, wolf.energy + wolf.Δenergy)
     return
 end
 

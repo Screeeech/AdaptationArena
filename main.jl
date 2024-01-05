@@ -85,6 +85,7 @@ end
 function grid_search_pop(params, mutation_vals, reproduce_vals; n=10, T=2000)
     grid = zeros(length(mutation_vals), length(reproduce_vals))
     params_cp = Dict(pairs(params))
+    original_seed = params_cp[:seed]    
 
     p = Progress(length(mutation_vals)*length(reproduce_vals), 1)
     Threads.@threads for i in eachindex(mutation_vals)
@@ -95,7 +96,7 @@ function grid_search_pop(params, mutation_vals, reproduce_vals; n=10, T=2000)
             Threads.@threads for k in 1:n
                 params_cp[:wolf_mutation_rate] = vm
                 params_cp[:wolf_reproduce] = vr
-                params_cp[:seed] += k-1
+                params_cp[:seed] = original_seed + k - 1
                 model = swg.initialize_model(;NamedTuple(params_cp)...)
 
                 t = 1
@@ -116,24 +117,98 @@ function grid_search_pop(params, mutation_vals, reproduce_vals; n=10, T=2000)
     return grid
 end
 
+
+function particle_swarm_optimization_params(params; n_particles=10, n_iterations=100, T=1000)
+    # Symbols to optimize
+    optimize_params = [:sheep_reproduce, :wolf_reproduce, :sheep_mutation_rate, :wolf_mutation_rate, 
+                        :grass_mutation_rate, :grass_gene_range, :wolf_gene_range, :energy_transfer]
+    # Initialize particles
+    n_params = length(optimize_params)
+    particles = rand(Uniform(0, 1), n_particles, n_params)
+    velocities = zeros(n_particles, n_params)
+    best_positions = copy(particles)
+    best_values = zeros(n_particles)
+    global_best_position = zeros(n_params)
+    global_best_value = 0
+    original_seed = params[:seed]
+
+    # Initialize model
+    model = swg.initialize_model(;NamedTuple(params)...)
+
+    # Initialize best values
+    for i in 1:n_particles
+        params_cp = Dict(pairs(params))
+        for j in 1:n_params
+            params_cp[optimize_params[j]] = particles[i, j]
+        end
+        model = swg.initialize_model(;NamedTuple(params_cp)...)
+        pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(model, T)
+        # Best value is the point when the wolf population goes extinct
+        best_values[i] = isnothing(findfirst(pop_data[:, 2] .== 0)) ? T : findfirst(pop_data[:, 2] .== 0)
+    end
+
+    # Iterate
+    for i in ProgressMeter(1:n_iterations)
+        # Didn't add multithreading for asynchronous updating
+        for j in 1:n_particles
+            # Update velocity
+            velocities[j, :] = 0.5*velocities[j, :] + 2*rand(Uniform(0, 1), n_params).*(best_positions[j, :] - particles[j, :]) + 2*rand(Uniform(0, 1), n_params).*(global_best_position - particles[j, :])
+            # Update position
+            particles[j, :] += velocities[j, :]
+            particles[j, :] = clamp.(particles[j, :], 0, 1)
+            params_cp = Dict(pairs(params))
+
+            for k in 1:n_params
+                params_cp[optimize_params[k]] = particles[j, k]
+            end
+
+            extinction_time = 0
+            for k in 1:10
+                params_cp[:seed] = original_seed + k - 1
+                model = swg.initialize_model(;NamedTuple(params_cp)...)
+                pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(model, T)
+                extinction_time += (isnothing(findfirst(pop_data[:,2] .== 0)) ? T : findfirst(pop_data[:,2] .== 0))/10
+            end
+            println(extinction_time, " ", best_values[j])
+            if extinction_time > best_values[j]
+                best_values[j] = extinction_time
+                best_positions[j, :] = particles[j, :]
+            end
+            # Update global best position
+            if extinction_time > global_best_value
+                global_best_value = extinction_time
+                global_best_position = particles[j, :]
+            end
+        end
+    end
+
+    params_cp = Dict(pairs(params))
+    for i in 1:n_params
+        params_cp[optimize_params[i]] = global_best_position[i]
+    end
+    return params_cp
+end
+
 # Here is all the actual interaction code
 stable_params = (;
-    n_sheep = 100,
-    n_wolves = 20,
+    n_sheep = 80,
+    n_wolves = 10,
     dims = dims,
-    regrowth_time = 30,
     Δenergy_sheep = 5,
-    sheep_reproduce = 0.30,
-    wolf_reproduce = 0.05,
     Δenergy_wolf = 30,
-    sheep_gene_distribution = truncated(Normal(-.5, .3), -1, 1),
-    wolf_gene_distribution = truncated(Normal(.5, .2), -1, 1),
-    grass_gene_distribution = truncated(Normal(0, .3), -1, 1),
-    wolf_gene_range = 0.12,
-    sheep_mutation_rate = 0.1,
-    wolf_mutation_rate = 0.03,
-    grass_gene_range = 0.1,
-    seed = 71758,
+    sheep_gene_distribution = truncated(Normal(-1, .3), -1, 1),
+    wolf_gene_distribution = truncated(Normal(0, .3), -1, 1),
+    grass_gene_distribution = truncated(Normal(0, .1), -1, 1),
+    sheep_reproduce = 0.5,
+    wolf_reproduce = 0.2,
+    regrowth_time = 30,
+    wolf_gene_range = 0.1,
+    grass_gene_range = 1,
+    sheep_mutation_rate = 0.2,
+    wolf_mutation_rate = .01,
+    grass_mutation_rate = 0.3,
+    energy_transfer = 0.3,
+    seed = 71759,
 )
 exp_params = (;
     n_sheep = 80,
@@ -143,15 +218,16 @@ exp_params = (;
     Δenergy_wolf = 30,
     sheep_gene_distribution = truncated(Normal(-1, .3), -1, 1),
     wolf_gene_distribution = truncated(Normal(0, .3), -1, 1),
-    grass_gene_distribution = truncated(Normal(-1, .3), -1, 1),
-    sheep_reproduce = 0.3,
-    wolf_reproduce = 0.01,
+    grass_gene_distribution = truncated(Normal(0, .1), -1, 1),
+    sheep_reproduce = 0.5,
+    wolf_reproduce = 0.2,
     regrowth_time = 30,
     wolf_gene_range = 0.1,
-    grass_gene_range = 0.1,
-    sheep_mutation_rate = 0.3,
-    wolf_mutation_rate = 0.01,
+    grass_gene_range = .5,
+    sheep_mutation_rate = 0.2,
+    wolf_mutation_rate = .1,
     grass_mutation_rate = 0.3,
+    energy_transfer = 0.3,
     seed = 71759,
 )
 sheepwolfgrass = swg.initialize_model(;exp_params...)
@@ -165,14 +241,16 @@ fig
 =#
 
 
-#=
+optimized_params = particle_swarm_optimization_params(exp_params)
+sheepwolfgrass = swg.initialize_model(;optimized_params...)
 adata = [(sheep, count), (wolf, count)]
 mdata = [count_grass]
-adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 3000; adata, mdata)
+adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 1000; adata, mdata)
 plot_population_timeseries(adf, mdf)
-=#
 
-# pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(sheepwolfgrass, 3000)
+
+
+# pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(sheepwolfgrass, 1000)
 
 #=
 anim = @animate for i in 1:length(sheep_genes)
@@ -188,7 +266,9 @@ Plots.plot!(gene_mean[:, 1], ribbon=gene_err[:, 1], color=1, label="Sheep", lw=3
 Plots.plot!(gene_mean[:, 2], ribbon=gene_err[:, 2], color=2, label="Wolves", lw=3)
 =#
 
+#=
 mutation_vals = LinRange(0, 0.3, 10)
 reproduce_vals = LinRange(0, 0.3, 10)
 grid = grid_search_pop(exp_params, mutation_vals, reproduce_vals; n=10, T=200)
 Plots.heatmap(reproduce_vals, mutation_vals, grid, xlabel="Reproduction Rate", ylabel="Mutation Rate", title="Extinction Time")
+=#
