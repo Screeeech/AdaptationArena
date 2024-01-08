@@ -297,6 +297,7 @@ adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 2000; adat
 plot_population_timeseries(adf, mdf)
 =#
 
+#=
 sheepwolfgrass = swg.initialize_model(;exp_params...)
 pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(sheepwolfgrass, 1000)
 
@@ -304,6 +305,7 @@ anim = @animate for i in 1:length(sheep_genes)
     generate_histogram(sheep_genes, wolf_genes, grass_genes, i)
 end
 gif(anim, "histogram_animation.gif", fps = 50)
+=#
 
 #=
 gene_mean, gene_err = gene_means((sheep_genes, wolf_genes, grass_genes))
