@@ -64,6 +64,23 @@ function gather_data(model, T)
     return pop_data, sheep_genes, wolf_genes, grass_genes
 end
 
+function gather_wolf_data(model, T)
+    pop_data = zeros(T)
+    
+    for i in 1:T
+        all_agents = collect(allagents(model))
+        pop_data[i] = count(wolf, all_agents)
+        
+        if pop_data[i] == 0
+            return pop_data[1:i]
+        else
+            run!(model, swg.sheepwolf_step!, swg.grass_step!, 1)
+        end
+    end
+
+    return pop_data
+end
+
 function generate_histogram(sheep_genes, wolf_genes, grass_genes, time_step)
     histogram(sheep_genes[time_step], bins=-1:.2:1, xlims=(-1, 1), ylims=(0, 100), alpha=0.5, label="Sheep")
     histogram!(wolf_genes[time_step], bins=-1:.1:1, alpha=0.8, xlims=(-1, 1), ylims=(0, 100), label="Wolves")
@@ -120,10 +137,19 @@ function grid_search_pop(params, mutation_vals, reproduce_vals; n=10, T=2000)
 end
 
 
-function particle_swarm_optimization_params(optimize_params, params; n_particles=10, n_iterations=100, T=1000)
+function particle_swarm_optimization_params(optimize_params, params; n_particles=10, n_iterations=100, T=1000, found_stable=nothing)
     # Initialize particles
     n_params = length(optimize_params)
-    particles = rand(Uniform(0.01, 1), n_particles, n_params)
+
+    particles = zeros(n_particles, n_params)
+    if isnothing(found_stable)
+        particles = rand(Uniform(0.2, 1), n_particles, n_params)
+    else
+        stable_optimize = [found_stable[p] for p in optimize_params]'
+        particles[1:end-1, :] = rand(Uniform(0.2, 1), n_particles-1, n_params)
+        println(stable_optimize)
+        particles[end, :] = stable_optimize
+    end
     velocities = zeros(n_particles, n_params)
     best_positions = copy(particles)
     best_values = zeros(n_particles)
@@ -149,8 +175,8 @@ function particle_swarm_optimization_params(optimize_params, params; n_particles
         for j in 1:10
             params_cp[:seed] = original_seed + j - 1
             model = swg.initialize_model(;NamedTuple(params_cp)...)
-            pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(model, T)
-            extinction_time += (isnothing(findfirst(pop_data[:,2] .== 0)) ? T : findfirst(pop_data[:,2] .== 0))/10
+            pop_data = gather_wolf_data(model, T)
+            extinction_time += (isnothing(findfirst(pop_data .== 0)) ? T : findfirst(pop_data .== 0))/10
         end
 
         data[i, 1:n_params] = particles[i, :]
@@ -167,7 +193,7 @@ function particle_swarm_optimization_params(optimize_params, params; n_particles
             velocities[j, :] = 0.5*velocities[j, :] + 2*rand(Uniform(0, 1), n_params).*(best_positions[j, :] - particles[j, :]) + 2*rand(Uniform(0, 1), n_params).*(global_best_position - particles[j, :])
             # Update position
             particles[j, :] += velocities[j, :]
-            particles[j, :] = clamp.(particles[j, :], 0.1, 1)
+            particles[j, :] = clamp.(particles[j, :], 0.2, 1)
             params_cp = Dict(pairs(params))
 
             for k in 1:n_params
@@ -175,12 +201,13 @@ function particle_swarm_optimization_params(optimize_params, params; n_particles
             end
 
             extinction_time = 0
-            for k in 1:10
+            Threads.@threads for k in 1:10
                 params_cp[:seed] = original_seed + k - 1
                 model = swg.initialize_model(;NamedTuple(params_cp)...)
-                pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(model, T)
-                extinction_time += (isnothing(findfirst(pop_data[:,2] .== 0)) ? T : findfirst(pop_data[:,2] .== 0))/10
+                pop_data = gather_wolf_data(model, T)
+                extinction_time += (isnothing(findfirst(pop_data .== 0)) ? T : findfirst(pop_data .== 0))/10
             end
+
             data[i*n_particles + j, 1:n_params] = particles[j, :]
             data[i*n_particles + j, n_params + 1] = extinction_time
 
@@ -229,20 +256,18 @@ exp_params = (;
     n_sheep = 80,
     n_wolves = 10,
     dims = dims,
-    Δenergy_sheep = 5,
-    Δenergy_wolf = 30,
+    Δenergy_sheep = 10,
+    Δenergy_wolf = 15,
     sheep_gene_distribution = truncated(Normal(-1, .3), -1, 1),
-    wolf_gene_distribution = truncated(Normal(0, .3), -1, 1),
-    grass_gene_distribution = truncated(Normal(0, .3), -1, 1),
-    sheep_reproduce = 0.5,
-    wolf_reproduce = 0.2,
+    wolf_gene_distribution = truncated(Normal(-.5, .3), -1, 1),
+    grass_gene_distribution = truncated(Uniform(0, .3), -1, 1),
+    grass_gene_range = 2,
     regrowth_time = 30,
-    wolf_gene_range = 0.1,
-    grass_gene_range = .5,
-    sheep_mutation_rate = 0.2,
+    sheep_reproduce = 0.2,
+    wolf_reproduce = 0.05,
+    wolf_gene_range = 0.12,
+    sheep_mutation_rate = 0.3,
     wolf_mutation_rate = .1,
-    grass_mutation_rate = 0.3,
-    energy_transfer = 0.3,
     seed = 71759,
 )
 
@@ -255,31 +280,30 @@ plotkwargs...)
 fig
 =#
 
+#=
 # Symbols to optimize
 optimize = [:sheep_reproduce, :wolf_reproduce, :sheep_mutation_rate, :wolf_mutation_rate, 
             :grass_mutation_rate, :grass_gene_range, :wolf_gene_range]
-optimized_params, scatter_data = particle_swarm_optimization_params(optimize, exp_params; n_particles=20, n_iterations=10, T=2000)
+optimized_params, scatter_data = particle_swarm_optimization_params(optimize, exp_params; n_particles=20, n_iterations=100, T=2000, found_stable=stable_params)
 scatter_data = DataFrame(scatter_data, [optimize..., :extinction_time])
-# @save "data.jld2" scatter_data optimized_params
+# @save "constrained_pso.jld2" scatter_data
+=#
 
 #=
-sheepwolfgrass = swg.initialize_model(;optimized_params...)
+sheepwolfgrass = swg.initialize_model(;exp_params...)
 adata = [(sheep, count), (wolf, count)]
 mdata = [count_grass]
-adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 1000; adata, mdata)
+adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 2000; adata, mdata)
 plot_population_timeseries(adf, mdf)
 =#
 
+sheepwolfgrass = swg.initialize_model(;exp_params...)
+pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(sheepwolfgrass, 1000)
 
-
-# pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(sheepwolfgrass, 1000)
-
-#=
 anim = @animate for i in 1:length(sheep_genes)
     generate_histogram(sheep_genes, wolf_genes, grass_genes, i)
 end
 gif(anim, "histogram_animation.gif", fps = 50)
-=#
 
 #=
 gene_mean, gene_err = gene_means((sheep_genes, wolf_genes, grass_genes))
