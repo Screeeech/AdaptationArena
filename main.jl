@@ -86,8 +86,8 @@ function generate_histogram(sheep_genes, wolf_genes, grass_genes, time_step)
     histogram!(wolf_genes[time_step], bins=-1:.1:1, alpha=0.8, xlims=(-1, 1), ylims=(0, 100), label="Wolves")
     Plots.plot!(legend=:topleft, xlabel="Gene Value", ylabel="Sheep/Wolf Count")
 
-    histogram!(twinx(), grass_genes[time_step, :], bins=-1:.2:1,alpha=0.2, xlims=(-1, 1), ylims=(0,450), label="Grass", color=:green, 
-                legend=:topright, ylabel="Grass Count")
+    # histogram!(twinx(), grass_genes[time_step, :], bins=-1:.2:1,alpha=0.2, xlims=(-1, 1), ylims=(0,450), label="Grass", color=:green, 
+    #            legend=:topright, ylabel="Grass Count")
 end
 
 function gene_means(genes)
@@ -263,11 +263,11 @@ exp_params = (;
     grass_gene_distribution = truncated(Uniform(0, .3), -1, 1),
     grass_gene_range = 2,
     regrowth_time = 30,
-    sheep_reproduce = 0.2,
-    wolf_reproduce = 0.05,
-    wolf_gene_range = 0.12,
-    sheep_mutation_rate = 0.3,
-    wolf_mutation_rate = .1,
+    sheep_reproduce = 0.3,
+    wolf_reproduce = 0.1,
+    wolf_gene_range = 0.05,
+    sheep_mutation_rate = .3,
+    wolf_mutation_rate = 0.1,
     seed = 71759,
 )
 
@@ -289,30 +289,27 @@ scatter_data = DataFrame(scatter_data, [optimize..., :extinction_time])
 # @save "constrained_pso.jld2" scatter_data
 =#
 
-#=
 sheepwolfgrass = swg.initialize_model(;exp_params...)
 adata = [(sheep, count), (wolf, count)]
 mdata = [count_grass]
 adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 2000; adata, mdata)
 plot_population_timeseries(adf, mdf)
-=#
+
+
+sheepwolfgrass = swg.initialize_model(;exp_params...)
+pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(sheepwolfgrass, 2000)
 
 #=
-sheepwolfgrass = swg.initialize_model(;exp_params...)
-pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(sheepwolfgrass, 1000)
-
 anim = @animate for i in 1:length(sheep_genes)
     generate_histogram(sheep_genes, wolf_genes, grass_genes, i)
 end
 gif(anim, "histogram_animation.gif", fps = 50)
 =#
 
-#=
 gene_mean, gene_err = gene_means((sheep_genes, wolf_genes, grass_genes))
-Plots.plot(gene_mean[:, 3], ribbon=gene_err[:, 3], color=3, label="Grass", legend=:topright, xlabel="Time", ylabel="Gene Mean", lw=3)
-Plots.plot!(gene_mean[:, 1], ribbon=gene_err[:, 1], color=1, label="Sheep", lw=3)
+# Plots.plot(gene_mean[:, 3], ribbon=gene_err[:, 3], color=3, label="Grass", legend=:topright, xlabel="Time", ylabel="Gene Mean", lw=3)
+Plots.plot(gene_mean[:, 1], ribbon=gene_err[:, 1], color=1, label="Sheep", lw=3)
 Plots.plot!(gene_mean[:, 2], ribbon=gene_err[:, 2], color=2, label="Wolves", lw=3)
-=#
 
 #=
 mutation_vals = LinRange(0, 0.25, 50)

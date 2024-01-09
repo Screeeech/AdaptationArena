@@ -94,10 +94,10 @@ end
 
 function sheepwolf_step!(sheep::Sheep, model)
     nearby_grass = nearby_edible_grass(sheep, model, sheep.hunt_range)
+    filter!(x -> x != sheep.pos, nearby_grass)
     if !isempty(nearby_grass)
         target = sign.(get_direction(sheep.pos, chebyshev_nearest_position(sheep, nearby_grass), model))
-        # walk!(sheep, target, model)
-        randomwalk!(sheep, model)
+        walk!(sheep, target, model)
     else
         randomwalk!(sheep, model)
     end
