@@ -113,10 +113,11 @@ function grid_search_pop(params, mutation_vals, reproduce_vals; n=10, T=2000)
             vr = reproduce_vals[j]
             avg_extinction = 0
             Threads.@threads for k in 1:n
-                params_cp[:wolf_mutation_rate] = vm
-                params_cp[:wolf_reproduce] = vr
-                params_cp[:seed] = original_seed + k - 1
-                model = swg.initialize_model(;NamedTuple(params_cp)...)
+                params_cp_cp = deepcopy(params_cp)
+                params_cp_cp[:wolf_mutation_rate] = vm
+                params_cp_cp[:wolf_reproduce] = vr
+                params_cp_cp[:seed] = original_seed + k - 1
+                model = swg.initialize_model(;NamedTuple(params_cp_cp)...)
 
                 t = 1
                 wolf_pop = zeros(T)
@@ -261,13 +262,13 @@ exp_params = (;
     sheep_gene_distribution = truncated(Normal(-1, .3), -1, 1),
     wolf_gene_distribution = truncated(Normal(-.5, .3), -1, 1),
     grass_gene_distribution = truncated(Uniform(0, .3), -1, 1),
-    grass_gene_range = 2,
+    grass_gene_range = 0.2,
     regrowth_time = 30,
-    sheep_reproduce = 0.3,
-    wolf_reproduce = 0.1,
+    sheep_reproduce = 0.5,
+    wolf_reproduce = 0.3,
     wolf_gene_range = 0.05,
     sheep_mutation_rate = .3,
-    wolf_mutation_rate = 0.1,
+    wolf_mutation_rate = .1,
     seed = 71759,
 )
 
@@ -293,11 +294,10 @@ sheepwolfgrass = swg.initialize_model(;exp_params...)
 adata = [(sheep, count), (wolf, count)]
 mdata = [count_grass]
 adf, mdf = run!(sheepwolfgrass, swg.sheepwolf_step!, swg.grass_step!, 2000; adata, mdata)
-plot_population_timeseries(adf, mdf)
+display(plot_population_timeseries(adf, mdf))
 
-
-sheepwolfgrass = swg.initialize_model(;exp_params...)
-pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(sheepwolfgrass, 2000)
+# sheepwolfgrass = swg.initialize_model(;exp_params...)
+# pop_data, sheep_genes, wolf_genes, grass_genes = gather_data(sheepwolfgrass, 2000)
 
 #=
 anim = @animate for i in 1:length(sheep_genes)
@@ -306,14 +306,17 @@ end
 gif(anim, "histogram_animation.gif", fps = 50)
 =#
 
+#=
 gene_mean, gene_err = gene_means((sheep_genes, wolf_genes, grass_genes))
 # Plots.plot(gene_mean[:, 3], ribbon=gene_err[:, 3], color=3, label="Grass", legend=:topright, xlabel="Time", ylabel="Gene Mean", lw=3)
-Plots.plot(gene_mean[:, 1], ribbon=gene_err[:, 1], color=1, label="Sheep", lw=3)
+p = Plots.plot(gene_mean[:, 1], ribbon=gene_err[:, 1], color=1, label="Sheep", lw=3)
 Plots.plot!(gene_mean[:, 2], ribbon=gene_err[:, 2], color=2, label="Wolves", lw=3)
+display(p)
+=#
 
 #=
-mutation_vals = LinRange(0, 0.25, 50)
-reproduce_vals = LinRange(0, 0.3, 60)
+mutation_vals = LinRange(0, 1, 50)
+reproduce_vals = LinRange(0, 1, 50)
 grid = grid_search_pop(exp_params, mutation_vals, reproduce_vals; n=10, T=2000)
 Plots.heatmap(reproduce_vals, mutation_vals, grid, xlabel="Reproduction Rate", ylabel="Mutation Rate", title="Extinction Time")
 =#
